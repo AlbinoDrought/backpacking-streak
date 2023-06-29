@@ -5,7 +5,9 @@ import (
 	"image"
 	"log"
 	"math/rand"
+	"os"
 	"path"
+	"sort"
 	"time"
 
 	"github.com/go-vgo/robotgo"
@@ -66,18 +68,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// imgUnselected, err := loadStep("5_unselected.png")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// imgSelected, err := loadStep("6_selected.png")
-	// if err != nil {
-	// 	panic(err)
-	// }
+	imgUnselected, err := loadStep("5_unselected.png")
+	if err != nil {
+		panic(err)
+	}
+	imgSelected, err := loadStep("6_selected.png")
+	if err != nil {
+		panic(err)
+	}
 	imgSend, err := loadStep("7_send.png")
 	if err != nil {
 		panic(err)
 	}
+
+	var screen image.Image
 
 	log.Println("giving you time to focus chromium...")
 	time.Sleep(2 * time.Second)
@@ -86,7 +90,7 @@ func main() {
 	// time.Sleep(time.Minute)
 
 	log.Println("looking at the screen...")
-	screen := robotgo.CaptureImg()
+	screen = robotgo.CaptureImg()
 	camPerms := gcv.FindAllImg(imgCamPerm, screen)
 	if len(camPerms) < 1 {
 		panic("todo: wait longer here")
@@ -112,24 +116,47 @@ func main() {
 	log.Println("pressing send to")
 	moveClick(sendTo.Middle.X, sendTo.Middle.Y)
 
-	screen = robotgo.CaptureImg(camPerm.Middle.X-300, camPerm.Middle.Y-300, 600, 600)
-	fires := gcv.FindAllImg(imgFireEmoji, screen)
-	if len(fires) < 1 {
-		panic("todo: retry, or all streaks have died")
-	}
-	fire := fires[0]
-	for _, nFire := range fires {
-		if nFire.Middle.X < fire.Middle.X || nFire.Middle.Y < fire.Middle.Y {
-			fire = nFire
+	clickBubbleLoops := 0
+	tryClickBubble := true
+	for tryClickBubble && clickBubbleLoops < 20 {
+		clickBubbleLoops++
+		tryClickBubble = false
+
+		screen = robotgo.CaptureImg(camPerm.Middle.X-300, 0, 600, camPerm.Middle.Y+300)
+		fires := gcv.FindAllImg(imgFireEmoji, screen)
+		if len(fires) < 1 {
+			panic("todo: retry, or all streaks have died")
+		}
+		sort.SliceStable(fires, func(i, j int) bool {
+			if fires[i].Middle.X < fires[j].Middle.X || fires[i].Middle.Y < fires[j].Middle.Y {
+				return true
+			}
+			return false
+		})
+		for _, fire := range fires {
+			// look for unselected bubble
+			screen = robotgo.CaptureImg(fire.Middle.X+camPerm.Middle.X-300, fire.TopLeft.Y-25, 150, imgUnselected.Bounds().Dy()+50)
+			unselecteds := gcv.FindAllImg(imgUnselected, screen)
+			selecteds := gcv.FindAllImg(imgSelected, screen)
+			if len(unselecteds) > len(selecteds) {
+				log.Println("found a streak, clicking")
+				moveClick(fire.Middle.X+camPerm.Middle.X-300, fire.Middle.Y)
+				tryClickBubble = true
+				break
+			}
 		}
 	}
-	moveClick(fire.Middle.X+camPerm.Middle.X-300, fire.Middle.Y+camPerm.Middle.Y-300)
 
-	screen = robotgo.CaptureImg()
-	sends := gcv.FindAllImg(imgSend, screen)
-	if len(sends) < 1 {
-		panic("todo: retry, or its fucked")
+	log.Println("clicked all found streaks")
+	os.Exit(0)
+
+	if false {
+		screen = robotgo.CaptureImg()
+		sends := gcv.FindAllImg(imgSend, screen)
+		if len(sends) < 1 {
+			panic("todo: retry, or its fucked")
+		}
+		send := sends[0]
+		moveClick(send.Middle.X, send.Middle.Y)
 	}
-	send := sends[0]
-	moveClick(send.Middle.X, send.Middle.Y)
 }
